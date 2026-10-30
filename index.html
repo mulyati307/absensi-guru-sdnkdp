@@ -76,6 +76,18 @@ footer{text-align:center;color:var(--mut);font-size:.85rem;padding-bottom:24px}
 .jam.closed{color:var(--sakit);border-color:var(--sakit)}
 .item img{cursor:default}
 .hide{display:none!important}
+.ok-card{text-align:center}
+.ok-ic{width:88px;height:88px;margin:4px auto 10px;border-radius:50%;background:var(--hadir);display:flex;align-items:center;justify-content:center;animation:pop .45s ease-out}
+.ok-ic svg{width:46px;height:46px;stroke:#fff;fill:none;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+@keyframes pop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}
+.ok-card h2{font-size:1.35rem;color:var(--hadir);margin-bottom:4px}
+.ok-card .sub{color:var(--mut);margin:0 0 16px}
+.dl{text-align:left;border:1.5px solid var(--line);border-radius:14px;background:var(--field);padding:4px 14px}
+.dl div{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--line)}
+.dl div:first-child{border-top:0}
+.dl span{color:var(--mut)}.dl b{text-align:right}
+.ok-note{margin:14px 0 0;padding:10px 12px;border-radius:12px;border:1.5px solid var(--pri);font-weight:700}
+@media (prefers-reduced-motion:reduce){.ok-ic{animation:none}}
 </style>
 </head>
 <body>
@@ -91,7 +103,7 @@ footer{text-align:center;color:var(--mut);font-size:.85rem;padding-bottom:24px}
 
 <main>
 
-<div class="card">
+<div class="card" id="formCard">
 <div class="note hide" id="note" role="status"></div>
 <h2>Isi absensi</h2>
 
@@ -159,6 +171,15 @@ footer{text-align:center;color:var(--mut);font-size:.85rem;padding-bottom:24px}
 
 <p class="msg" id="msg" role="alert"></p>
 <button class="main" type="button" id="btnKirim">Kirim absensi</button>
+</div>
+
+<div class="card ok-card hide" id="sukses" role="status" aria-live="polite">
+<div class="ok-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+<h2>Absensi Berhasil Tersimpan</h2>
+<p class="sub">Terima kasih, data Anda sudah masuk ke database sekolah.</p>
+<div class="dl" id="okDetail"></div>
+<p class="ok-note" id="okNote"></p>
+<button class="main" type="button" id="btnLagi">Selesai</button>
 </div>
 
 <div class="card hide" id="histCard">
@@ -264,6 +285,21 @@ document.querySelectorAll('input[name="jenis"]').forEach(function(r){r.onchange=
 
 /* daftar terkirim di perangkat ini (tanpa foto, hanya sebagai bukti kirim) */
 try{local=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){local=[]}
+function hariIni(){return now().toLocaleDateString("en-GB",{timeZone:TZ})}
+function sudahIsi(nama,jenis){var t=hariIni();return local.some(function(x){return x.nama===nama&&x.jenis===jenis&&String(x.waktu).slice(0,10)===t})}
+function showDone(x){
+  var rows=[["Nama",x.nama],["Peran",x.peran],["Jenis absensi",x.jenis],["Status",x.status],["Waktu tersimpan",x.waktu]];
+  if(x.ket)rows.push(["Keterangan",x.ket]);
+  $("okDetail").innerHTML=rows.map(function(r){return "<div><span>"+r[0]+"</span><b>"+esc(r[1])+"</b></div>"}).join("");
+  var m=sudahIsi(x.nama,"Absen Masuk"),p=sudahIsi(x.nama,"Absen Pulang");
+  $("okNote").textContent=m&&p?"Absen masuk dan absen pulang hari ini sudah lengkap. Batas pengisian 2 kali sehari sudah tercapai.":
+    (x.jenis==="Absen Masuk"?"Jangan lupa mengisi Absen Pulang nanti. Batas pengisian 2 kali sehari: masuk dan pulang.":"Absen pulang tersimpan. Pastikan Absen Masuk hari ini juga sudah diisi.");
+  $("formCard").classList.add("hide");$("sukses").classList.remove("hide");window.scrollTo(0,0);
+}
+$("btnLagi").onclick=function(){
+  $("sukses").classList.add("hide");$("formCard").classList.remove("hide");
+  $("nama").value="";$("peran").value="";say("");window.scrollTo(0,0);
+};
 function renderLocal(){
   $("histCard").classList.toggle("hide",!local.length);
   $("btnHapus").classList.toggle("hide",!local.length);
@@ -283,6 +319,7 @@ $("btnKirim").onclick=function(){
   if(busy)return;
   var nama=$("nama").value,peran=$("peran").value,st=val("status");
   if(!ready()){say("Alamat database belum diatur. Hubungi admin sekolah.");return}
+  if(nama&&sudahIsi(nama,val("jenis"))){say("Anda sudah mengisi "+val("jenis")+" hari ini. Batas pengisian 2 kali sehari (masuk dan pulang).");return}
   if(!nama){say("Pilih nama terlebih dahulu.");$("nama").focus();return}
   if(!peran){say("Pilih peran terlebih dahulu.");$("peran").focus();return}
   if(st==="Hadir"&&!win().open){var w=win();say("Di luar jam absensi. "+val("jenis")+" dibuka pukul "+w.a+" sampai "+w.b+".");return}
@@ -300,7 +337,7 @@ $("btnKirim").onclick=function(){
     local.push({nama:nama,peran:peran,jenis:rec.jenis,status:st,ket:rec.ket,waktu:j.waktu||fmt(now())});
     try{localStorage.setItem(KEY,JSON.stringify(local.slice(-50)))}catch(e){}
     $("ket").value="";$("bukti").value="";bukti=null;$("prevBukti").classList.add("hide");resetCam();
-    renderLocal();say("Absensi tersimpan di database.",true);
+    renderLocal();say("");showDone(local[local.length-1]);
   })
   .catch(function(){say("Gagal terhubung. Periksa internet lalu coba lagi.")})
   .then(function(){busy=false;$("btnKirim").disabled=false});
