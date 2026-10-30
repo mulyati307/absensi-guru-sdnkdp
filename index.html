@@ -175,6 +175,7 @@ var API_URL="https://script.google.com/macros/s/AKfycby158lG8WysSv2W1PpDJgOC0Kp2
 var TZ="Asia/Jakarta",KEY="absensi-guru-terkirim";
 var $=function(id){return document.getElementById(id)};
 var stream=null,foto=null,bukti=null,local=[],off=0,busy=false;
+var BATAS_JAM=false; /* false = batas jam NONAKTIF, ubah ke true untuk mengaktifkan lagi */
 var DEF={mMulai:"05:00",mAkhir:"08:00",pMulai:"12:00",pAkhir:"17:00"},jam=DEF;
 
 function now(){return new Date(Date.now()+off)}
@@ -191,11 +192,11 @@ function note(t){var n=$("note");n.textContent=t;n.classList.toggle("hide",!t)}
 
 function win(){
   var p=val("jenis")==="Absen Pulang",a=p?jam.pMulai:jam.mMulai,b=p?jam.pAkhir:jam.mAkhir,m=nowMin();
-  return{a:a,b:b,open:m>=mins(a)&&m<=mins(b)};
+  return{a:a,b:b,open:!BATAS_JAM||(m>=mins(a)&&m<=mins(b))};
 }
 function jamInfo(){
   var w=win(),h=val("status")==="Hadir",el=$("jamInfo");
-  el.textContent=val("jenis")+" untuk status Hadir dibuka pukul "+w.a+" sampai "+w.b+". "+
+  el.textContent=!BATAS_JAM?"Absensi dibuka sepanjang hari.":val("jenis")+" untuk status Hadir dibuka pukul "+w.a+" sampai "+w.b+". "+
     (h?(w.open?"Sekarang dibuka.":"Sekarang ditutup."):"Sakit dan izin bisa diisi kapan saja.");
   el.className="jam "+(h&&!w.open?"closed":"open");
 }
