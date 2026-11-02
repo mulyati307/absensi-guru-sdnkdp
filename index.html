@@ -134,7 +134,7 @@ function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null
 function esc(s){var d=document.createElement("div");d.textContent=s==null?"":s;return d.innerHTML}
 function now(){return new Date(Date.now()+off)}
 function iso(d){return d.toLocaleDateString("en-CA",{timeZone:TZ})}
-function tglId(t){var p=t.split("-");return new Date(+p[0],+p[1]-1,+p[2]).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short",year:"numeric"})}
+function tglId(t){t=String(t||"");if(!/^\d{4}-\d{2}-\d{2}$/.test(t))return t||"-";var p=t.split("-");return new Date(+p[0],+p[1]-1,+p[2]).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short",year:"numeric"})}
 function cls(s){return s==="Hadir"||s==="Izin"||s==="Sakit"?s:"TH"}
 function badge(s){return '<span class="badge '+cls(s)+'">'+esc(s)+'</span>'}
 function msg(t,ok){var m=$("msg");if(m){m.textContent=t;m.className="msg"+(ok?" ok":"")}}
