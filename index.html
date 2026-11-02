@@ -128,7 +128,7 @@ td:first-child,th:first-child{text-align:left}
 var API="https://script.google.com/macros/s/AKfycby158lG8WysSv2W1PpDJgOC0Kp2Rz1fPk6SqNas7U8huE6ttKZlBZnzX1QXO-0-4vFM/exec";
 var TZ="Asia/Jakarta",TK="absensi-sdn-token";
 var $=function(i){return document.getElementById(i)};
-var tok=null,me=null,off=0,tab="",stream=null,foto=null,bukti=null,busy=false,guruAll=[],cache={},rb="",rm="harian";
+var tok=null,me=null,off=0,tab="",stream=null,foto=null,bukti=null,busy=false,guruAll=[],cache={},rb="",rm="harian",sesiNow="Masuk";
 var BLN=["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
 function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){return null}}
 function esc(s){var d=document.createElement("div");d.textContent=s==null?"":s;return d.innerHTML}
@@ -163,7 +163,7 @@ function boot(){
   fetch(API).then(function(r){return r.json()}).then(function(j){
     if(!j.ok)throw 0;off=j.now-Date.now();
     var t=ls(TK);
-    if(t){tok=t;return api("saya").then(function(s){if(s.ok){me=s.user;me.sudah=s.sudah;off=s.now-Date.now();enter()}else vLogin(j.guru)})}
+    if(t){tok=t;return api("saya").then(function(s){if(s.ok){me=s.user;setHari(s);off=s.now-Date.now();enter()}else vLogin(j.guru)})}
     vLogin(j.guru);
   }).catch(function(){$("app").innerHTML='<div class="card"><p class="msg">Tidak dapat terhubung ke database. Periksa internet lalu muat ulang halaman.</p></div>'});
 }
@@ -175,25 +175,38 @@ function shell(){
   T.map(function(t){return'<button data-a="tab" data-v="'+t[0]+'" class="'+(t[0]===tab?"on":"")+'">'+t[1]+'</button>'}).join("")+'</div><div id="view"></div><p class="hint" style="text-align:center">Absensi SD Negeri Kadupeureup - Versi 2.0</p>';
   ({isi:vIsi,riwayat:vRiwayat,rekap:vRekap,dash:vDash,absensi:vAbsensi,guru:vGuru})[tab]();
 }
+function setHari(s){me.masuk=s.masuk||null;me.pulang=s.pulang||null;me.jadwal=s.jadwal||{}}
 function jm(x){return x.jam?x.jam+" WIB":"dicatat admin"}
 function csv(n,rows){var t="\ufeff"+rows.map(function(r){return r.map(function(c){return'"'+String(c==null?"":c).replace(/"/g,'""')+'"'}).join(";")}).join("\r\n");var l=document.createElement("a");l.href=URL.createObjectURL(new Blob([t],{type:"text/csv;charset=utf-8"}));l.download=n;document.body.appendChild(l);l.click();setTimeout(function(){URL.revokeObjectURL(l.href);l.remove()},500)}
 function loading(){$("view").innerHTML='<div class="card"><p class="empty">Memuat...</p></div>'}
 
 /* ---------- USER: isi absensi ---------- */
-function done(x){
-  return'<div class="card ok-card"><div class="ok-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div><h2>Absensi Hari Ini Tersimpan</h2><p class="sub">Terima kasih, data Anda sudah masuk ke database sekolah.</p><div class="dl">'+
-  [["Nama",me.nama],["Tanggal",tglId(x.tgl)],["Jam",x.jam+" WIB"],["Status",x.status]].concat(x.ket?[["Keterangan",x.ket]]:[]).map(function(r){return'<div><span>'+r[0]+'</span><b>'+esc(r[1])+'</b></div>'}).join("")+
-  '</div><p class="ok-note">Absensi hanya bisa diisi satu kali per hari. Jika ada kesalahan, hubungi kepala sekolah.</p></div>';
+function done(m,p){
+  var r=[["Nama",me.nama],["Tanggal",tglId(m.tgl)],["Absen masuk",jm(m)+" ("+m.status+")"]];
+  if(m.ket)r.push(["Keterangan",m.ket]);
+  if(m.status==="Hadir")r.push(["Absen pulang",p?jm(p):"Belum diisi"]);
+  var ttl=m.status!=="Hadir"?"Absensi Hari Ini Tersimpan":(p?"Absensi Hari Ini Lengkap":"Absen Masuk Tersimpan");
+  return'<div class="card ok-card"><div class="ok-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div><h2>'+ttl+'</h2><p class="sub">Terima kasih, data Anda sudah masuk ke database sekolah.</p><div class="dl">'+
+  r.map(function(x){return'<div><span>'+x[0]+'</span><b>'+esc(x[1])+'</b></div>'}).join("")+
+  '</div><p class="ok-note">Absen masuk dan absen pulang masing-masing hanya bisa diisi satu kali per hari. Jika ada kesalahan, hubungi kepala sekolah.</p></div>';
 }
 function vIsi(){
-  if(me.sudah){$("view").innerHTML=done(me.sudah);return}
+  var m=me.masuk,p=me.pulang,j=me.jadwal||{};
+  if(m&&(m.status!=="Hadir"||p)){$("view").innerHTML=done(m,p);return}
   foto=null;bukti=null;
-  $("view").innerHTML='<div class="card"><h2>Isi absensi</h2><label class="l">Nama</label><div class="time"><b>'+esc(me.nama)+'</b>'+esc(me.peran)+'</div>'+
+  var pl=!!m,w;sesiNow=pl?"Pulang":"Masuk";w=j[sesiNow]||{};
+  var top=pl?done(m,null):"",nm=pl?"pulang":"masuk";
+  if(j.aktif&&!w.open){
+    $("view").innerHTML=top+'<div class="card"><h2>Absen '+nm+'</h2><p class="jam closed">'+(j.libur?"Hari Minggu tidak ada absensi.":"Absen "+nm+" hanya dibuka pukul "+esc(w.buka)+" - "+esc(w.tutup)+" WIB.")+'</p><div class="row"><button type="button" data-a="refresh">Muat ulang</button></div></div>';
+    return;
+  }
+  $("view").innerHTML=top+'<div class="card"><h2>'+(pl?"Absen pulang":"Absen masuk")+'</h2>'+(j.aktif?'<p class="jam open">Dibuka sampai pukul '+esc(w.tutup)+' WIB.</p>':"")+
+  '<label class="l">Nama</label><div class="time"><b>'+esc(me.nama)+'</b>'+esc(me.peran)+'</div>'+
   '<label class="l">Tanggal dan jam (otomatis)</label><div class="time">'+tglId(iso(now()))+'<b id="waktu"></b></div>'+
-  '<label class="l">Status kehadiran</label><div class="seg dk"><label class="s-Hadir"><input type="radio" name="status" value="Hadir" checked><span>Hadir</span></label><label class="s-Izin"><input type="radio" name="status" value="Izin"><span>Izin</span></label><label class="s-Sakit"><input type="radio" name="status" value="Sakit"><span>Sakit</span></label></div>'+
+  (pl?'':'<label class="l">Status kehadiran</label><div class="seg dk"><label class="s-Hadir"><input type="radio" name="status" value="Hadir" checked><span>Hadir</span></label><label class="s-Izin"><input type="radio" name="status" value="Izin"><span>Izin</span></label><label class="s-Sakit"><input type="radio" name="status" value="Sakit"><span>Sakit</span></label></div>')+
   '<div id="bH"><label class="l">Foto langsung</label><div class="cam" id="cam"><span>Belum ada foto</span></div><div class="row"><button type="button" id="cOpen" data-a="cOpen">Buka kamera</button><button type="button" id="cShot" class="hide" data-a="cShot">Ambil foto</button><button type="button" id="cRe" class="hide" data-a="cRe">Foto ulang</button><button type="button" id="cFile" class="hide" data-a="cFile">Pakai kamera HP</button><input type="file" accept="image/*" capture="user" id="fileCam" class="hide"></div></div>'+
-  '<div id="bI" class="hide"><label class="l" for="ket">Keterangan</label><textarea id="ket" placeholder="Contoh: demam, surat dokter terlampir"></textarea><label class="l" for="bukti">Bukti (surat dokter, surat izin, dll.)</label><input type="file" id="bukti" accept="image/*"><img id="pv" alt="Pratinjau bukti" class="hide" style="max-width:100%;max-height:200px;margin-top:10px;border-radius:12px"></div>'+
-  '<p class="msg" id="msg" role="alert"></p><button class="main" id="kirim" data-a="kirim">Simpan absensi</button></div>';
+  (pl?'':'<div id="bI" class="hide"><label class="l" for="ket">Keterangan</label><textarea id="ket" placeholder="Contoh: demam, surat dokter terlampir"></textarea><label class="l" for="bukti">Bukti (surat dokter, surat izin, dll.)</label><input type="file" id="bukti" accept="image/*"><img id="pv" alt="Pratinjau bukti" class="hide" style="max-width:100%;max-height:200px;margin-top:10px;border-radius:12px"></div>')+
+  '<p class="msg" id="msg" role="alert"></p><button class="main" id="kirim" data-a="kirim">'+(pl?"Simpan absen pulang":"Simpan absen masuk")+'</button></div>';
   tick();
 }
 function shrink(s,w,h){var k=Math.min(1,480/Math.max(w,h)),c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext("2d").drawImage(s,0,0,c.width,c.height);return c.toDataURL("image/jpeg",.6)}
@@ -209,14 +222,15 @@ function camOpen(){
   }).catch(noCam);
 }
 function kirim(){
-  if(busy)return;var st=document.querySelector('input[name=status]:checked').value,ket=$("ket").value.trim();
+  if(busy)return;var st=sesiNow==="Pulang"?"Hadir":document.querySelector('input[name=status]:checked').value,ket=$("ket")?$("ket").value.trim():"";
   if(st==="Hadir"&&!foto)return msg("Ambil foto langsung terlebih dahulu.");
   if(st!=="Hadir"){if(!ket)return msg("Isi keterangan terlebih dahulu.");if(!bukti)return msg("Unggah bukti terlebih dahulu.")}
   busy=true;$("kirim").disabled=true;msg("Menyimpan...");
-  api("isi",{status:st,ket:st==="Hadir"?"":ket,gambar:st==="Hadir"?foto:bukti}).then(function(j){
+  api("isi",{sesi:sesiNow,status:st,ket:st==="Hadir"?"":ket,gambar:st==="Hadir"?foto:bukti}).then(function(j){
     busy=false;
     if(!j.ok){if($("kirim")){$("kirim").disabled=false;msg(j.error)}return}
-    me.sudah=j.rec;stopCam();vIsi();window.scrollTo(0,0);
+    if(j.rec.sesi==="Pulang")me.pulang=j.rec;else me.masuk=j.rec;
+    stopCam();vIsi();window.scrollTo(0,0);
   });
 }
 
@@ -225,7 +239,7 @@ function vRiwayat(){
   loading();api("riwayat").then(function(j){
     if(!j.ok)return;
     $("view").innerHTML='<div class="card"><h2>Riwayat absensi saya</h2>'+(j.list.length?j.list.map(function(x){
-      return'<div class="item"><div><div class="t">'+tglId(x.tgl)+' '+badge(x.status)+'</div><div class="m">Jam '+jm(x)+'</div>'+(x.ket?'<div class="m">Keterangan: '+esc(x.ket)+'</div>':'')+'</div></div>'}).join(""):'<p class="empty">Belum ada absensi.</p>')+'</div>';
+      return'<div class="item"><div><div class="t">'+tglId(x.tgl)+' '+badge(x.status)+' <span class="badge TH">Absen '+esc(x.sesi)+'</span></div><div class="m">Jam '+jm(x)+'</div>'+(x.ket?'<div class="m">Keterangan: '+esc(x.ket)+'</div>':'')+'</div></div>'}).join(""):'<p class="empty">Belum ada absensi.</p>')+'</div>';
   });
 }
 function cards(c){return'<div class="g4"><div class="stat Hadir"><b>'+c.H+'</b><small>Hadir</small></div><div class="stat Izin"><b>'+c.I+'</b><small>Izin</small></div><div class="stat Sakit"><b>'+c.S+'</b><small>Sakit</small></div><div class="stat TH"><b>'+c.T+'</b><small>Tidak Hadir</small></div></div>'}
@@ -236,7 +250,7 @@ function vRekap(){
     var h='<div class="card"><h2>Rekap absensi saya</h2><div class="row" style="margin:0 0 12px"><button class="small" data-a="rm" data-v="harian" '+(rm==="harian"?'style="background:var(--pri);color:var(--priink)"':"")+'>Harian</button><button class="small" data-a="rm" data-v="bulanan" '+(rm==="bulanan"?'style="background:var(--pri);color:var(--priink)"':"")+'>Bulanan</button></div>'+
     '<label class="l" for="rbln">Bulan</label><input type="month" id="rbln" value="'+j.bulan+'">';
     if(rm==="harian"){
-      h+=cards(j.c)+(j.harian.length?j.harian.slice().reverse().map(function(x){return'<div class="item"><div><div class="t">'+tglId(x.tgl)+' '+badge(x.status)+'</div>'+(x.jam?'<div class="m">Jam '+esc(x.jam)+' WIB</div>':'')+'</div></div>'}).join(""):'<p class="empty">Belum ada data bulan ini.</p>');
+      h+=cards(j.c)+(j.harian.length?j.harian.slice().reverse().map(function(x){return'<div class="item"><div><div class="t">'+tglId(x.tgl)+' '+badge(x.status)+'</div>'+(x.jam||x.pulang?'<div class="m">Masuk '+(x.jam?esc(x.jam)+' WIB':'-')+(x.pulang?', pulang '+esc(x.pulang)+' WIB':'')+'</div>':'')+'</div></div>'}).join(""):'<p class="empty">Belum ada data bulan ini.</p>');
     }else{
       h+='<p class="hint">Tahun '+j.bulan.slice(0,4)+'</p><div style="overflow-x:auto"><table><tr><th>Bulan</th><th>Hadir</th><th>Izin</th><th>Sakit</th><th>Tidak</th></tr>'+
       j.tahun.map(function(x){return'<tr><td>'+BLN[+x.b.slice(5)-1]+'</td><td>'+x.c.H+'</td><td>'+x.c.I+'</td><td>'+x.c.S+'</td><td>'+x.c.T+'</td></tr>'}).join("")+'</table></div>';
@@ -253,7 +267,7 @@ function vDash(){
     var j=r[0],k=r[1];if(!j.ok||!k.ok)return;dList=k.list;
     $("view").innerHTML='<div class="card"><h2>Dashboard</h2><label class="l" for="dtgl">Tanggal</label><input type="date" id="dtgl" value="'+j.tgl+'">'+cards(j.c)+
     '<p class="hint">Tidak hadir termasuk yang belum mengisi absensi. Kepala sekolah tidak ikut dihitung.</p>'+
-    (j.list.length?j.list.map(function(x){return'<div class="item"><div><div class="t">'+esc(x.nama)+' '+badge(x.status)+'</div><div class="m">'+esc(x.peran)+(x.jam?', jam '+esc(x.jam)+' WIB':"")+'</div></div></div>'}).join(""):'<p class="empty">Belum ada data guru.</p>')+'</div>'+
+    (j.list.length?j.list.map(function(x){return'<div class="item"><div><div class="t">'+esc(x.nama)+' '+badge(x.status)+'</div><div class="m">'+esc(x.peran)+(x.jam?', masuk '+esc(x.jam)+' WIB':"")+(x.pulang?', pulang '+esc(x.pulang)+' WIB':"")+'</div></div></div>'}).join(""):'<p class="empty">Belum ada data guru.</p>')+'</div>'+
     '<div class="card"><div class="top"><h2>Rekap bulanan</h2><button class="small" data-a="csvRekap">Unduh Excel</button></div><input type="month" id="dbln" value="'+k.bulan+'" aria-label="Bulan"><div style="overflow-x:auto;margin-top:10px"><table><tr><th>Nama</th><th>Hadir</th><th>Izin</th><th>Sakit</th><th>Tidak</th></tr>'+
     k.list.map(function(x){return'<tr><td>'+esc(x.nama)+'</td><td>'+x.c.H+'</td><td>'+x.c.I+'</td><td>'+x.c.S+'</td><td>'+x.c.T+'</td></tr>'}).join("")+'</table></div></div>';
   });
@@ -268,21 +282,21 @@ function vAbsensi(){
     $("view").innerHTML='<div class="card"><div class="top"><h2>Data absensi</h2><span><button class="small" data-a="aAdd">+ Tambah</button> <button class="small" data-a="csvAbs">Unduh Excel</button></span></div><div class="filters"><input type="month" id="abln" value="'+aB+'" aria-label="Bulan"><select id="agur" aria-label="Guru"><option value="">Semua guru</option>'+
     guruAll.map(function(g){return'<option value="'+esc(g.id)+'"'+(g.id===aG?" selected":"")+'>'+esc(g.nama)+'</option>'}).join("")+'</select></div><p class="hint">'+r[1].list.length+' data</p>'+
     (r[1].list.length?r[1].list.map(function(x){cache[x.id]=x;
-      return'<div class="item"><div><div class="t">'+esc(x.nama)+' '+badge(x.status)+'</div><div class="m">'+tglId(x.tgl)+', '+jm(x)+'</div>'+(x.ket?'<div class="m">Keterangan: '+esc(x.ket)+'</div>':'')+
+      return'<div class="item"><div><div class="t">'+esc(x.nama)+' '+badge(x.status)+' <span class="badge TH">'+esc(x.sesi)+'</span></div><div class="m">'+tglId(x.tgl)+', '+jm(x)+'</div>'+(x.ket?'<div class="m">Keterangan: '+esc(x.ket)+'</div>':'')+
       '<div class="act">'+(x.foto?'<button class="small" data-a="foto" data-id="'+x.id+'">Lihat foto</button>':'')+'<button class="small" data-a="aEdit" data-id="'+x.id+'">Edit</button><button class="small del" data-a="aDel" data-id="'+x.id+'">Hapus</button></div></div></div>'}).join(""):'<p class="empty">Tidak ada data.</p>')+'</div>';
   });
 }
 function aAdd(){
   modal('<h2>Tambah absensi manual</h2><p class="hint">Untuk guru yang tidak bisa mengisi sendiri. Tanpa foto.</p><label class="l" for="nG">Guru</label><select id="nG">'+
   guruAll.filter(function(g){return g.aktif&&g.peran!=="Kepala Sekolah"}).map(function(g){return'<option value="'+esc(g.id)+'">'+esc(g.nama)+'</option>'}).join("")+
-  '</select><label class="l" for="nT">Tanggal</label><input type="date" id="nT" value="'+iso(now())+'"><label class="l" for="nS">Status</label><select id="nS"><option>Hadir</option><option>Izin</option><option>Sakit</option><option>Tidak Hadir</option></select><label class="l" for="nK">Keterangan</label><textarea id="nK"></textarea><p class="msg" id="msg"></p><div class="row"><button class="main" style="margin:0;flex:1" data-a="nSave">Simpan</button><button data-a="mClose">Batal</button></div>');
+  '</select><label class="l" for="nSes">Sesi</label><select id="nSes"><option>Masuk</option><option>Pulang</option></select><label class="l" for="nT">Tanggal</label><input type="date" id="nT" value="'+iso(now())+'"><label class="l" for="nS">Status</label><select id="nS"><option>Hadir</option><option>Izin</option><option>Sakit</option><option>Tidak Hadir</option></select><label class="l" for="nK">Keterangan</label><textarea id="nK"></textarea><p class="msg" id="msg"></p><div class="row"><button class="main" style="margin:0;flex:1" data-a="nSave">Simpan</button><button data-a="mClose">Batal</button></div>');
 }
 function pinForm(){
   modal('<h2>Ganti PIN</h2><label class="l" for="pL">PIN lama</label><input type="password" id="pL" inputmode="numeric" autocomplete="current-password"><label class="l" for="pB">PIN baru (4 sampai 8 angka)</label><input type="password" id="pB" inputmode="numeric" autocomplete="new-password"><p class="msg" id="msg"></p><div class="row"><button class="main" style="margin:0;flex:1" data-a="pSave">Simpan</button><button data-a="mClose">Batal</button></div>');
 }
 function aEdit(id){
   var x=cache[id];if(!x)return;
-  modal('<h2>Edit absensi</h2><p class="hint">'+esc(x.nama)+'</p><label class="l" for="eS">Status</label><select id="eS">'+["Hadir","Izin","Sakit","Tidak Hadir"].map(function(s){return'<option'+(s===x.status?" selected":"")+'>'+s+'</option>'}).join("")+
+  modal('<h2>Edit absensi</h2><p class="hint">'+esc(x.nama)+' - Absen '+esc(x.sesi)+'</p><label class="l" for="eS">Status</label><select id="eS">'+["Hadir","Izin","Sakit","Tidak Hadir"].map(function(s){return'<option'+(s===x.status?" selected":"")+'>'+s+'</option>'}).join("")+
   '</select><label class="l" for="eT">Tanggal</label><input type="date" id="eT" value="'+x.tgl+'"><label class="l" for="eK">Keterangan</label><textarea id="eK">'+esc(x.ket)+'</textarea><p class="msg" id="msg"></p><div class="row"><button class="main" style="margin:0;flex:1" data-a="eSave" data-id="'+id+'">Simpan</button><button data-a="mClose">Batal</button></div>');
 }
 
@@ -309,7 +323,7 @@ document.addEventListener("click",function(e){
   if(a==="login"){
     var i=$("lg").value,p=$("pin").value;if(!i||!p)return msg("Pilih nama dan isi PIN.");
     b.disabled=true;msg("Memeriksa...");
-    api("login",{id:i,pin:p}).then(function(j){b.disabled=false;if(!j.ok)return msg(j.error);tok=j.token;ls(TK,tok);off=j.now-Date.now();me=j.user;api("saya").then(function(s){me.sudah=s.ok?s.sudah:null;enter()})});
+    api("login",{id:i,pin:p}).then(function(j){b.disabled=false;if(!j.ok)return msg(j.error);tok=j.token;ls(TK,tok);off=j.now-Date.now();me=j.user;api("saya").then(function(s){setHari(s.ok?s:{});enter()})});
   }
   else if(a==="out")logout();
   else if(a==="tab"){tab=v;shell()}
@@ -318,15 +332,16 @@ document.addEventListener("click",function(e){
   else if(a==="cRe"){foto=null;$("cam").innerHTML="<span>Belum ada foto</span>";$("cRe").classList.add("hide");camOpen()}
   else if(a==="cFile")$("fileCam").click();
   else if(a==="kirim")kirim();
+  else if(a==="refresh")api("saya").then(function(s){if(s.ok){off=s.now-Date.now();setHari(s);vIsi()}});
   else if(a==="rm"){rm=v;vRekap()}
   else if(a==="mClose")closeM();
   else if(a==="foto"){b.disabled=true;api("foto",{id:id}).then(function(j){b.disabled=false;if(!j.ok)return alert(j.error);modal('<img alt="Foto absensi" src="'+j.src+'"><div class="row"><button data-a="mClose">Tutup</button></div>')})}
   else if(a==="aEdit")aEdit(id);
   else if(a==="aAdd")aAdd();
-  else if(a==="nSave")api("absensiTambah",{gid:$("nG").value,tgl:$("nT").value,status:$("nS").value,ket:$("nK").value}).then(function(j){if(!j.ok)return msg(j.error);closeM();vAbsensi()});
+  else if(a==="nSave")api("absensiTambah",{gid:$("nG").value,sesi:$("nSes").value,tgl:$("nT").value,status:$("nS").value,ket:$("nK").value}).then(function(j){if(!j.ok)return msg(j.error);closeM();vAbsensi()});
   else if(a==="pinForm")pinForm();
   else if(a==="pSave")api("ubahPin",{lama:$("pL").value,baru:$("pB").value}).then(function(j){if(!j.ok)return msg(j.error);msg("PIN berhasil diganti.",true);setTimeout(closeM,1200)});
-  else if(a==="csvAbs")csv("data-absensi-"+aB+".csv",[["Tanggal","Jam","Nama","Peran","Status","Keterangan"]].concat(aList.map(function(x){return[x.tgl,x.jam,x.nama,x.peran,x.status,x.ket]})));
+  else if(a==="csvAbs")csv("data-absensi-"+aB+".csv",[["Tanggal","Sesi","Jam","Nama","Peran","Status","Keterangan"]].concat(aList.map(function(x){return[x.tgl,x.sesi,x.jam,x.nama,x.peran,x.status,x.ket]})));
   else if(a==="csvRekap")csv("rekap-bulanan-"+dB+".csv",[["Nama","Peran","Hadir","Izin","Sakit","Tidak Hadir"]].concat(dList.map(function(x){return[x.nama,x.peran,x.c.H,x.c.I,x.c.S,x.c.T]})));
   else if(a==="eSave")api("absensiEdit",{id:id,status:$("eS").value,tgl:$("eT").value,ket:$("eK").value}).then(function(j){if(!j.ok)return msg(j.error);closeM();vAbsensi()});
   else if(a==="aDel"){if(confirm("Hapus data absensi ini? Tindakan ini tidak bisa dibatalkan."))api("absensiHapus",{id:id}).then(function(j){if(!j.ok)return alert(j.error);vAbsensi()})}
